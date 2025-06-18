@@ -1,0 +1,5 @@
+<div cdkDropList (cdkDropListDropped)="dropImage($event)" class="flex space-x-2">
+  <div *ngFor="let img of product.images" cdkDrag>
+    <img [src]="img" class="w-24 h-24 rounded shadow border-2 border-gray-200">
+  </div>
+</div>

@@ -29,10 +29,13 @@ export class LoginComponent implements OnInit {
 
   onSubmit(): void {
     if (this.loginForm.valid) {
-      console.log('Formulario de Login Válido:', this.loginForm.value);
-      this.router.navigate(['/auth/profile']);
+      // Simula autenticación y guarda un token
+      localStorage.setItem('token', 'demo-token');
+      // Redirige al home y recarga para actualizar el layout
+      this.router.navigate(['/']).then(() => {
+        window.location.reload();
+      });
     } else {
-      console.log('Formulario de Login Inválido:', this.loginForm.value);
       this.loginForm.markAllAsTouched();
     }
   }
