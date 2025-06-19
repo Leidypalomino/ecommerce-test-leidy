@@ -1,58 +1,52 @@
-// frontend/src/app/core/theme.service.ts
-import { Injectable, Inject, PLATFORM_ID } from '@angular/core';
-import { isPlatformBrowser } from '@angular/common';
-import { BehaviorSubject } from 'rxjs';
+import { Injectable, Renderer2, RendererFactory2 } from '@angular/core';
+import { BehaviorSubject, Observable } from 'rxjs';
+import { DOCUMENT } from '@angular/common';
+import { Inject } from '@angular/core';
 
 @Injectable({
   providedIn: 'root'
 })
 export class Theme {
-  private _darkMode = new BehaviorSubject<boolean>(false);
-  darkMode$ = this._darkMode.asObservable(); // Observable para que los componentes se suscriban
+  private _isDarkMode = new BehaviorSubject<boolean>(false);
+  public readonly darkMode$: Observable<boolean> = this._isDarkMode.asObservable();
 
-  constructor(@Inject(PLATFORM_ID) private platformId: Object) {
-    if (isPlatformBrowser(this.platformId)) {
-      // Si estamos en el navegador, inicializamos el tema
-      this.loadTheme();
-    }
+  private renderer: Renderer2;
+
+  constructor(
+    rendererFactory: RendererFactory2,
+    @Inject(DOCUMENT) private document: Document // Inyecta el objeto Document
+  ) {
+    this.renderer = rendererFactory.createRenderer(null, null);
+    // Inicializa el tema al cargar la aplicación
+    this.initializeTheme();
   }
 
-  private loadTheme(): void {
-    if (isPlatformBrowser(this.platformId)) {
-      const savedTheme = localStorage.getItem('theme');
-      if (savedTheme) {
-        this.setTheme(savedTheme === 'dark');
-      } else {
-        // Si no hay tema guardado, usa la preferencia del sistema operativo
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        this.setTheme(prefersDark);
-      }
+  private initializeTheme(): void {
+    // 1. Intenta cargar el tema desde localStorage
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) {
+      this._isDarkMode.next(savedTheme === 'dark');
+    } else {
+      // 2. Si no hay nada en localStorage, detecta la preferencia del sistema
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      this._isDarkMode.next(prefersDark);
     }
-  }
-
-  setTheme(isDark: boolean): void {
-    if (isPlatformBrowser(this.platformId)) {
-      const htmlElement = document.documentElement; // Elemento <html>
-
-      if (isDark) {
-        htmlElement.classList.add('dark');
-        localStorage.setItem('theme', 'dark');
-      } else {
-        htmlElement.classList.remove('dark');
-        localStorage.setItem('theme', 'light');
-      }
-      this._darkMode.next(isDark); // Notifica a los suscriptores el cambio
-    }
+    // Aplica el tema inicial al HTML
+    this.applyThemeClass(this._isDarkMode.getValue());
   }
 
   toggleTheme(): void {
-    if (isPlatformBrowser(this.platformId)) {
-      const currentMode = this._darkMode.value;
-      this.setTheme(!currentMode);
-    }
+    const newMode = !this._isDarkMode.getValue();
+    this._isDarkMode.next(newMode);
+    this.applyThemeClass(newMode); // Aplica la clase inmediatamente
+    localStorage.setItem('theme', newMode ? 'dark' : 'light'); // Guarda la preferencia
   }
 
-  isDarkMode(): boolean {
-    return this._darkMode.value;
+  private applyThemeClass(isDark: boolean): void {
+    if (isDark) {
+      this.renderer.addClass(this.document.documentElement, 'dark'); // Aplica al <html>
+    } else {
+      this.renderer.removeClass(this.document.documentElement, 'dark'); // Remueve del <html>
+    }
   }
 }
