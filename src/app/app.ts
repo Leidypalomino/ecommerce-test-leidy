@@ -1,6 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { RouterOutlet, RouterModule, Router } from '@angular/router';
-import { CommonModule } from '@angular/common'; // <-- importa esto
+import { CommonModule } from '@angular/common';
 import { Theme } from './core/theme';
 import { Observable } from 'rxjs';
 
@@ -14,12 +14,15 @@ import { Observable } from 'rxjs';
 export class App implements OnInit {
   isDarkMode$!: Observable<boolean>;
   isAuthenticated = false;
+  isAdmin = false;
 
   constructor(private themeService: Theme, private router: Router) {}
 
   ngOnInit() {
     this.isDarkMode$ = this.themeService.darkMode$;
-    this.isAuthenticated = !!localStorage.getItem('token'); // <-- aquí
+    this.isAuthenticated = !!localStorage.getItem('token');
+    const email = localStorage.getItem('user_email');
+    this.isAdmin = email === 'admin@example.com';
   }
 
   toggleTheme(): void {

@@ -1,24 +1,30 @@
-// frontend/src/app/auth/login/login.component.ts
 import { Component, OnInit } from '@angular/core';
-import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms'; // Añade ReactiveFormsModule aquí
-import { Router, RouterModule } from '@angular/router'; // Asegúrate de que RouterModule esté aquí
-import { CommonModule } from '@angular/common'; // <-- ¡Importa esto!
+import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms'; 
+import { Router, RouterModule } from '@angular/router';
+import { CommonModule } from '@angular/common';
+import { HttpClient, HttpClientModule } from '@angular/common/http';
 
 @Component({
   selector: 'app-login',
   templateUrl: './login.component.html',
   styleUrl: './login.component.scss',
-  standalone: true, // Esto debería estar aquí si es standalone
-  imports: [ // <-- ¡Añade CommonModule y otros aquí!
+  standalone: true,
+  imports: [
     CommonModule,
     ReactiveFormsModule,
-    RouterModule // Para que [routerLink] funcione
+    RouterModule,
+    HttpClientModule
   ]
 })
 export class LoginComponent implements OnInit {
   loginForm!: FormGroup;
+  errorMsg = '';
 
-  constructor(private fb: FormBuilder, private router: Router) { }
+  constructor(
+    private fb: FormBuilder,
+    private router: Router,
+    private http: HttpClient
+  ) { }
 
   ngOnInit(): void {
     this.loginForm = this.fb.group({
@@ -29,12 +35,23 @@ export class LoginComponent implements OnInit {
 
   onSubmit(): void {
     if (this.loginForm.valid) {
-      // Simula autenticación y guarda un token
-      localStorage.setItem('token', 'demo-token');
-      // Redirige al home y recarga para actualizar el layout
-      this.router.navigate(['/']).then(() => {
-        window.location.reload();
-      });
+      const payload = this.loginForm.value;
+      this.http.post<any>('http://localhost:8080/api/auth/login', payload)
+        .subscribe({
+          next: (res) => {
+            localStorage.setItem('token', res.access_token);
+            localStorage.setItem('user_email', payload.email);
+            this.router.navigate(['/']).then(() => window.location.reload());
+          },
+          error: (err) => {
+            // Si el error es "Unauthorized", muestra mensaje personalizado
+            if (err.error?.error === 'Unauthorized') {
+              this.errorMsg = 'Usuario o contraseña incorrectos';
+            } else {
+              this.errorMsg = 'Ocurrió un error al iniciar sesión';
+            }
+          }
+        });
     } else {
       this.loginForm.markAllAsTouched();
     }

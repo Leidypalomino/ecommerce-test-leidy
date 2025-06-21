@@ -62,6 +62,10 @@
       </button>
     </div>
   </form>
+  
+  <div *ngIf="errorMsg" class="text-red-600 text-center mt-4">
+    {{ errorMsg }}
+  </div>
 
   <div class="mt-6 text-center">
     <p class="text-sm">
