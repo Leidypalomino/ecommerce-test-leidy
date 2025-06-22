@@ -4,6 +4,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms'; // Para [(ngModel)] del selector de cantidad
 import { Title, Meta } from '@angular/platform-browser'; // Para Meta tags de SEO
 import { Subscription } from 'rxjs';
+import { HttpClient, HttpClientModule } from '@angular/common/http';
 
 interface Product {
   id: number;
@@ -23,7 +24,7 @@ interface Product {
 
 @Component({
   selector: 'app-product-detail',
-  imports: [CommonModule, FormsModule, RouterModule],
+  imports: [CommonModule, FormsModule, RouterModule, HttpClientModule],
   templateUrl: './product-detail.html',
   styleUrl: './product-detail.scss'
 })
@@ -50,22 +51,35 @@ export class ProductDetail implements OnInit, OnDestroy {
     private route: ActivatedRoute,
     private router: Router, // Inyecta Router
     private titleService: Title, // Inyecta Title
-    private metaService: Meta // Inyecta Meta
+    private metaService: Meta, // Inyecta Meta
+    private http: HttpClient
   ) {
     this.productsData = this.generateDummyProducts(20); // Genera 20 productos para la simulación
   }
 
   ngOnInit(): void {
-    this.routeSub = this.route.paramMap.subscribe(params => {
-      const productId = Number(params.get('id'));
-      if (productId) {
-        this.loadProduct(productId);
-      } else {
-        this.product = undefined;
-        this.loading = false;
-      }
-    });
-    this.currentProductUrl = window.location.href; // Obtiene la URL actual del navegador
+    const nav = this.router.getCurrentNavigation();
+    const stateProduct = nav?.extras?.state?.['product'] as Product | undefined;
+
+    if (stateProduct) {
+      this.product = stateProduct;
+      this.mainImage = stateProduct.images[0] || '';
+      this.loadRelatedProducts(stateProduct.category, stateProduct.id);
+      this.setMetaTags(stateProduct);
+      this.loading = false;
+    } else {
+      // Si no viene en el estado, carga por ID (respaldo)
+      this.routeSub = this.route.paramMap.subscribe(params => {
+        const productId = Number(params.get('id'));
+        if (productId) {
+          this.loadProduct(productId);
+        } else {
+          this.product = undefined;
+          this.loading = false;
+        }
+      });
+    }
+    this.currentProductUrl = window.location.href;
   }
 
   ngOnDestroy(): void {
@@ -75,21 +89,41 @@ export class ProductDetail implements OnInit, OnDestroy {
   }
 
   private loadProduct(id: number): void {
-    this.loading = true;
-    this.product = undefined; // Limpia el producto anterior
-    this.mainImage = ''; // Limpia la imagen principal
+  this.loading = true;
+  this.product = undefined;
+  this.mainImage = '';
 
-    setTimeout(() => { // Simula una llamada API
-      const foundProduct = this.productsData.find(p => p.id === id);
-
-      if (foundProduct) {
-        this.product = foundProduct;
-        this.mainImage = foundProduct.images[0] || ''; // Establece la primera imagen como principal
-        this.loadRelatedProducts(foundProduct.category, foundProduct.id);
-        this.setMetaTags(foundProduct); // Configura las meta tags
+  this.http.get<any>(`http://localhost:8080/api/products/${id}?include=categories,images`).subscribe({
+    next: (p) => {
+      if (p) {
+        this.product = {
+          id: p.id,
+          name: p.name,
+          description: p.description,
+          longDescription: p.long_description || '',
+          price: Number(p.price),
+          oldPrice: p.old_price ? Number(p.old_price) : undefined,
+          category: p.categories && p.categories.length > 0 ? p.categories[0].name : 'Sin categoría',
+          images: p.images && p.images.length > 0
+            ? p.images.map((img: any) => 'http://localhost:8080' + img.url)
+            : ['https://via.placeholder.com/600x400?text=Sin+Imagen'],
+          inStock: p.stock > 0,
+          rating: Math.floor(Math.random() * 5) + 1, // Si tu API lo trae, úsalo
+          reviews: Math.floor(Math.random() * 200) + 10, // Si tu API lo trae, úsalo
+          sku: p.sku || '',
+          brand: p.brand || ''
+        };
+        this.mainImage = this.product.images[0] || '';
+        this.setMetaTags(this.product);
+        // Puedes cargar productos relacionados aquí si tu API lo permite
       }
       this.loading = false;
-    }, 800); // Retraso para simular carga
+    },
+    error: () => {
+      this.product = undefined;
+      this.loading = false;
+    }
+    });
   }
 
   private loadRelatedProducts(category: string, currentProductId: number): void {

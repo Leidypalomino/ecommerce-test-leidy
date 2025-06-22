@@ -8,6 +8,7 @@
       </ng-container>
       <ng-container *ngIf="isAuthenticated">
         <a [routerLink]="['/']" class="...">Inicio</a>
+        <a [routerLink]="['/auth/profile']" class="...">Perfil</a>
         <a *ngIf="isAdmin" [routerLink]="['/admin']" class="...">Dashboard</a>
         <button (click)="logout()" class="...">Cerrar sesión</button>
       </ng-container>

@@ -1,79 +1,104 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { HttpClient, HttpHeaders, HttpClientModule } from '@angular/common/http';
 
 interface Category {
-  id: number;
+  id?: number;
   name: string;
-  description: string;
+  parent_id?: number | null;
 }
 
 @Component({
   selector: 'app-category-management',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, HttpClientModule],
   templateUrl: './category-management.html',
   styleUrl: './category-management.scss'
 })
 export class CategoryManagement implements OnInit {
-  categories: Category[] = []; // Lista de todas las categorías
-  currentCategory: Category = this.getEmptyCategory(); // Categoría para el formulario (añadir/editar)
-  isEditing: boolean = false; // Indica si estamos editando o añadiendo
-  nextId: number = 1; // Para simular IDs autoincrementables
+  categories: Category[] = [];
+  currentCategory: Category = this.getEmptyCategory();
+  isEditing: boolean = false;
+  message: string = '';
+  messageType: 'success' | 'error' | '' = '';
+  showDeleteModal: boolean = false;
+  categoryToDelete?: number;
 
-  constructor() { }
+  constructor(private http: HttpClient) { }
 
   ngOnInit(): void {
     this.loadCategories();
   }
 
-  // --- Métodos de CRUD (Simulados) ---
+  getAuthHeaders(): HttpHeaders {
+    const token = localStorage.getItem('token');
+    return new HttpHeaders({
+      'Authorization': `Bearer ${token}`,
+      'accept': 'application/json'
+    });
+  }
 
   loadCategories(): void {
-    // Simula la carga de categorías desde una API o base de datos
-    setTimeout(() => {
-      this.categories = this.generateDummyCategories(5); // Genera 5 categorías de ejemplo
-      if (this.categories.length > 0) {
-        this.nextId = Math.max(...this.categories.map(c => c.id)) + 1;
-      } else {
-        this.nextId = 1;
-      }
-    }, 500);
+    this.http.get<any>('http://localhost:8080/api/categories', { headers: this.getAuthHeaders() })
+      .subscribe({
+        next: (response) => this.categories = response.data, // <-- Cambia aquí
+        error: () => this.showMessage('No se pudieron cargar las categorías', 'error')
+      });
   }
 
   saveCategory(): void {
     if (!this.currentCategory.name) {
-      alert('Por favor, ingresa el nombre de la categoría.');
+      this.showMessage('Por favor, ingresa el nombre de la categoría.', 'error');
       return;
     }
 
-    if (this.isEditing) {
-      // Editar categoría existente
-      const index = this.categories.findIndex(c => c.id === this.currentCategory.id);
-      if (index !== -1) {
-        this.categories[index] = { ...this.currentCategory }; // Copia para evitar mutaciones directas si se cancela
-        alert('Categoría actualizada con éxito!');
-      }
+    if (this.isEditing && this.currentCategory.id) {
+      this.http.put<Category>(
+        `http://localhost:8080/api/categories/${this.currentCategory.id}`,
+        { name: this.currentCategory.name, parent_id: this.currentCategory.parent_id },
+        { headers: this.getAuthHeaders() }
+      ).subscribe({
+        next: () => {
+          this.showMessage('Categoría actualizada con éxito!', 'success');
+          this.loadCategories();
+          this.resetForm();
+        },
+        error: () => this.showMessage('No se pudo actualizar la categoría', 'error')
+      });
     } else {
-      // Añadir nueva categoría
-      this.currentCategory.id = this.nextId++;
-      this.categories.push({ ...this.currentCategory });
-      alert('Categoría añadida con éxito!');
+      this.http.post<Category>(
+        'http://localhost:8080/api/categories',
+        { name: this.currentCategory.name, parent_id: this.currentCategory.parent_id },
+        { headers: this.getAuthHeaders() }
+      ).subscribe({
+        next: () => {
+          this.showMessage('Categoría añadida con éxito!', 'success');
+          this.loadCategories();
+          this.resetForm();
+        },
+        error: () => this.showMessage('No se pudo crear la categoría', 'error')
+      });
     }
-
-    this.resetForm();
   }
 
   editCategory(category: Category): void {
     this.isEditing = true;
-    this.currentCategory = { ...category }; // Crea una copia para editar
+    this.currentCategory = { ...category };
   }
 
-  deleteCategory(id: number): void {
+  deleteCategory(id?: number): void {
+    if (!id) return;
     if (confirm('¿Estás seguro de que quieres eliminar esta categoría?')) {
-      this.categories = this.categories.filter(c => c.id !== id);
-      alert('Categoría eliminada.');
-      this.resetForm();
+      this.http.delete(`http://localhost:8080/api/categories/${id}`, { headers: this.getAuthHeaders() })
+        .subscribe({
+          next: () => {
+            this.showMessage('Categoría eliminada.', 'success');
+            this.loadCategories();
+            this.resetForm();
+          },
+          error: () => this.showMessage('No se pudo eliminar la categoría', 'error')
+        });
     }
   }
 
@@ -88,24 +113,45 @@ export class CategoryManagement implements OnInit {
 
   getEmptyCategory(): Category {
     return {
-      id: 0,
       name: '',
-      description: ''
+      parent_id: null
     };
   }
 
-  // --- Métodos de Simulación de Datos ---
-  private generateDummyCategories(count: number): Category[] {
-    const categories: Category[] = [];
-    const categoryNames = ['Electrónica', 'Ropa', 'Hogar', 'Deportes', 'Libros'];
-    for (let i = 1; i <= count; i++) {
-      const name = categoryNames[i - 1] || `Categoría ${i}`;
-      categories.push({
-        id: i,
-        name: name,
-        description: `Descripción de la categoría ${name}.`
+  showMessage(msg: string, type: 'success' | 'error' = 'success') {
+    this.message = msg;
+    this.messageType = type;
+    setTimeout(() => {
+      this.message = '';
+      this.messageType = '';
+    }, 4000);
+  }
+
+  openDeleteModal(id?: number) {
+    if (id === undefined) return;
+    this.categoryToDelete = id;
+    this.showDeleteModal = true;
+  }
+
+  closeDeleteModal() {
+    this.showDeleteModal = false;
+    this.categoryToDelete = undefined;
+  }
+
+  confirmDeleteCategory() {
+    if (!this.categoryToDelete) return;
+    this.http.delete(`http://localhost:8080/api/categories/${this.categoryToDelete}`, { headers: this.getAuthHeaders() })
+      .subscribe({
+        next: () => {
+          this.showMessage('Categoría eliminada.', 'success');
+          this.loadCategories();
+          this.resetForm();
+          this.closeDeleteModal();
+        },
+        error: () => {
+          this.showMessage('No se pudo eliminar la categoría', 'error');
+          this.closeDeleteModal();
+        }
       });
-    }
-    return categories;
   }
 }

@@ -1,9 +1,10 @@
 import { Component, OnInit, OnDestroy, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
-import { CommonModule } from '@angular/common'; // Para *ngIf, *ngFor
-import { FormsModule } from '@angular/forms'; // Para [(ngModel)]
-import { debounceTime, Subject } from 'rxjs'; // Para debounce
-import { takeUntil } from 'rxjs/operators'; // Para gestionar suscripciones
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { debounceTime, Subject } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
 import { RouterModule } from '@angular/router';
+import { HttpClient, HttpClientModule } from '@angular/common/http';
 
 interface Product {
   id: number;
@@ -13,11 +14,10 @@ interface Product {
   category: string;
   image: string;
   inStock: boolean;
-  rating: number; // 1-5 estrellas
+  rating: number;
   reviews: number;
 }
 
-// Definición de la interfaz de Categoría para filtros
 interface CategoryFilter {
   name: string;
   count: number;
@@ -26,70 +26,149 @@ interface CategoryFilter {
 @Component({
   selector: 'app-catalog',
   standalone: true,
-  imports: [CommonModule, FormsModule, RouterModule],
+  imports: [CommonModule, FormsModule, RouterModule, HttpClientModule],
   templateUrl: './catalog.html',
   styleUrl: './catalog.scss'
 })
-
 export class Catalog implements OnInit, OnDestroy, AfterViewInit {
-  viewMode: 'grid' | 'list' = 'grid'; // 'grid' o 'list'
-  showFiltersMobile: boolean = false; // Controla la visibilidad del sidebar en móviles
+  viewMode: 'grid' | 'list' = 'grid';
+  showFiltersMobile: boolean = false;
 
-  // --- Propiedades de Filtros ---
   searchTerm: string = '';
-  private searchSubject = new Subject<string>(); // Para debounce
+  private searchSubject = new Subject<string>();
   selectedCategories: string[] = [];
-  availableCategories: CategoryFilter[] = []; // Se llenará dinámicamente
+  availableCategories: CategoryFilter[] = [];
   minPrice: number = 0;
   maxPrice: number = 1000;
   inStockOnly: boolean = false;
-  minRating: number = 0; // Para el filtro de calificación
+  minRating: number = 0;
 
-  // --- Propiedades de Ordenamiento ---
-  sortBy: string = 'nameAsc'; // Opciones: 'nameAsc', 'nameDesc', 'priceAsc', 'priceDesc', 'ratingDesc'
+  sortBy: string = 'nameAsc';
 
-  // --- Propiedades de Productos y Paginación/Infinite Scroll ---
-  allProducts: Product[] = []; // Todos los productos (simulados)
-  filteredProducts: Product[] = []; // Productos después de aplicar filtros y ordenamiento
-  displayedProducts: Product[] = []; // Productos mostrados en la vista actual (para paginación/infinite scroll)
+  allProducts: Product[] = [];
+  filteredProducts: Product[] = [];
+  displayedProducts: Product[] = [];
 
-  // Opciones de Paginación/Infinite Scroll
-  useInfiniteScroll: boolean = true; // Cambiar a false para usar paginación
+  useInfiniteScroll: boolean = true;
   currentPage: number = 1;
-  productsPerPage: number = 8; // Cuántos productos cargar por página/scroll
+  productsPerPage: number = 8;
   totalPages: number = 1;
-  loading: boolean = false; // Estado de carga para skeleton loaders
-  noMoreProducts: boolean = false; // Indica si no hay más productos para cargar con infinite scroll
+  loading: boolean = false;
+  noMoreProducts: boolean = false;
 
-  private destroy$ = new Subject<void>(); // Para desuscribirse al destruir el componente
+  private destroy$ = new Subject<void>();
 
-  // Referencia al elemento trigger de infinite scroll
   @ViewChild('scrollTrigger') scrollTrigger!: ElementRef;
   private observer!: IntersectionObserver;
 
-  // --- Quick View Modal ---
   showQuickViewModal: boolean = false;
   selectedProductForQuickView: Product | null = null;
 
-
-  constructor() {
-    // Simulamos una carga inicial de productos
-    this.loading = true;
-    setTimeout(() => {
-      this.allProducts = this.generateDummyProducts(50); // Genera 50 productos de ejemplo
-      this.populateCategories(); // Llena las categorías y sus conteos
-      this.applyFiltersAndSorting(); // Aplica filtros iniciales
-      this.loading = false;
-    }, 1000); // Simula 1 segundo de carga
-  }
+  constructor(private http: HttpClient) {}
 
   ngOnInit(): void {
-    // Configura el debounce para la búsqueda
     this.searchSubject.pipe(
-      debounceTime(300), // Espera 300ms después de la última pulsación
+      debounceTime(400),
       takeUntil(this.destroy$)
-    ).subscribe(() => {
-      this.applyFiltersAndSorting();
+    ).subscribe((term) => {
+      this.searchProductsFromApi(term);
+    });
+
+    this.loadProductsFromApi();
+  }
+
+  searchProductsFromApi(term: string): void {
+    this.loading = true;
+    let url = 'http://localhost:8080/api/products?include=categories,images';
+    if (term && term.trim().length > 0) {
+      url += `&search=${encodeURIComponent(term.trim())}`;
+    }
+    this.http.get<any>(url).subscribe({
+      next: (response) => {
+        this.allProducts = (response.data || []).map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          description: p.description,
+          price: Number(p.price),
+          category: p.categories && p.categories.length > 0 ? p.categories[0].name : 'Sin categoría',
+          image: p.images && p.images.length > 0
+            ? ('http://localhost:8080' + (p.images.find((img: any) => img.is_primary)?.url || p.images[0].url))
+            : 'https://via.placeholder.com/400x300?text=Sin+Imagen',
+          inStock: p.stock > 0,
+          rating: Math.floor(Math.random() * 5) + 1,
+          reviews: Math.floor(Math.random() * 200) + 5
+        }));
+        this.populateCategories();
+        this.applyFiltersAndSorting();
+        this.loading = false;
+      },
+      error: () => {
+        this.allProducts = [];
+        this.filteredProducts = [];
+        this.displayedProducts = [];
+        this.loading = false;
+      }
+    });
+  }
+
+  loadProductsByCategory(categoryId: number): void {
+    this.loading = true;
+    this.http.get<any>(`http://localhost:8080/api/products?category=${categoryId}&include=categories,images`)
+      .subscribe({
+        next: (response) => {
+          this.allProducts = (response.data || []).map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            description: p.description,
+            price: Number(p.price),
+            category: p.categories && p.categories.length > 0 ? p.categories[0].name : 'Sin categoría',
+            image: p.images && p.images.length > 0
+              ? ('http://localhost:8080' + (p.images.find((img: any) => img.is_primary)?.url || p.images[0].url))
+              : 'https://via.placeholder.com/400x300?text=Sin+Imagen',
+            inStock: p.stock > 0,
+            rating: Math.floor(Math.random() * 5) + 1,
+            reviews: Math.floor(Math.random() * 200) + 5
+          }));
+          this.populateCategories();
+          this.applyFiltersAndSorting();
+          this.loading = false;
+        },
+        error: () => {
+          this.allProducts = [];
+          this.filteredProducts = [];
+          this.displayedProducts = [];
+          this.loading = false;
+        }
+      });
+  }
+
+  loadProductsFromApi(): void {
+    this.loading = true;
+    this.http.get<any>('http://localhost:8080/api/products?include=categories,images').subscribe({
+      next: (response) => {
+        this.allProducts = (response.data || []).map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          description: p.description,
+          price: Number(p.price),
+          category: p.categories && p.categories.length > 0 ? p.categories[0].name : 'Sin categoría',
+          image: p.images && p.images.length > 0
+              ? ('http://localhost:8080' + (p.images.find((img: any) => img.is_primary)?.url || p.images[0].url))
+              : 'https://via.placeholder.com/400x300?text=Sin+Imagen',
+          inStock: p.stock > 0,
+          rating: Math.floor(Math.random() * 5) + 1,
+          reviews: Math.floor(Math.random() * 200) + 5
+        }));
+        this.populateCategories();
+        this.applyFiltersAndSorting();
+        this.loading = false;
+      },
+      error: () => {
+        this.allProducts = [];
+        this.filteredProducts = [];
+        this.displayedProducts = [];
+        this.loading = false;
+      }
     });
   }
 
@@ -107,7 +186,6 @@ export class Catalog implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
-  // --- Métodos de UI ---
   toggleView(mode: 'grid' | 'list'): void {
     this.viewMode = mode;
   }
@@ -116,7 +194,6 @@ export class Catalog implements OnInit, OnDestroy, AfterViewInit {
     this.showFiltersMobile = !this.showFiltersMobile;
   }
 
-  // --- Métodos de Filtro ---
   onSearchInput(): void {
     this.searchSubject.next(this.searchTerm);
   }
@@ -132,7 +209,6 @@ export class Catalog implements OnInit, OnDestroy, AfterViewInit {
   }
 
   applyFilters(): void {
-    // Si usas paginación, resetea a la primera página
     if (!this.useInfiniteScroll) {
       this.currentPage = 1;
     }
@@ -149,19 +225,15 @@ export class Catalog implements OnInit, OnDestroy, AfterViewInit {
     this.applyFiltersAndSorting();
   }
 
-  // --- Métodos de Ordenamiento ---
   applySorting(): void {
     this.applyFiltersAndSorting();
   }
 
-  // --- Lógica Principal de Filtros y Ordenamiento ---
   private applyFiltersAndSorting(): void {
-    // Simular carga para mostrar skeleton loaders si los tuvieras
     this.loading = true;
-    setTimeout(() => { // Simula un retraso para la carga/filtrado
-      let tempProducts = [...this.allProducts]; // Copia de todos los productos
+    setTimeout(() => {
+      let tempProducts = [...this.allProducts];
 
-      // 1. Aplicar búsqueda
       if (this.searchTerm) {
         const lowerCaseSearchTerm = this.searchTerm.toLowerCase();
         tempProducts = tempProducts.filter(p =>
@@ -170,25 +242,20 @@ export class Catalog implements OnInit, OnDestroy, AfterViewInit {
         );
       }
 
-      // 2. Aplicar filtros de categoría
       if (this.selectedCategories.length > 0) {
         tempProducts = tempProducts.filter(p => this.selectedCategories.includes(p.category));
       }
 
-      // 3. Aplicar filtro de precio
       tempProducts = tempProducts.filter(p => p.price >= this.minPrice && p.price <= this.maxPrice);
 
-      // 4. Aplicar filtro de disponibilidad
       if (this.inStockOnly) {
         tempProducts = tempProducts.filter(p => p.inStock);
       }
 
-      // 5. Aplicar filtro de calificación
       if (this.minRating > 0) {
         tempProducts = tempProducts.filter(p => p.rating >= this.minRating);
       }
 
-      // 6. Aplicar ordenamiento
       switch (this.sortBy) {
         case 'nameAsc':
           tempProducts.sort((a, b) => a.name.localeCompare(b.name));
@@ -209,21 +276,19 @@ export class Catalog implements OnInit, OnDestroy, AfterViewInit {
 
       this.filteredProducts = tempProducts;
 
-      // Resetear paginación/infinite scroll
       if (this.useInfiniteScroll) {
-        this.displayedProducts = []; // Reinicia los productos mostrados
-        this.currentPage = 0; // Se incrementará en loadMoreProducts
+        this.displayedProducts = [];
+        this.currentPage = 0;
         this.noMoreProducts = false;
-        this.loadMoreProducts(); // Carga la primera "página"
+        this.loadMoreProducts();
       } else {
         this.totalPages = Math.ceil(this.filteredProducts.length / this.productsPerPage);
         this.updateDisplayedProductsForPagination();
       }
       this.loading = false;
-    }, 300); // Pequeño retraso para simular el procesamiento de filtros
+    }, 300);
   }
 
-  // --- Lógica de Paginación ---
   changePage(page: number): void {
     if (page >= 1 && page <= this.totalPages) {
       this.currentPage = page;
@@ -237,12 +302,11 @@ export class Catalog implements OnInit, OnDestroy, AfterViewInit {
     this.displayedProducts = this.filteredProducts.slice(startIndex, endIndex);
   }
 
-  // --- Lógica de Infinite Scroll ---
   private setupInfiniteScroll(): void {
     const options = {
-      root: null, // El viewport es el root
+      root: null,
       rootMargin: '0px',
-      threshold: 0.1 // Cargar cuando el 10% del trigger sea visible
+      threshold: 0.1
     };
 
     this.observer = new IntersectionObserver(([entry]) => {
@@ -262,7 +326,7 @@ export class Catalog implements OnInit, OnDestroy, AfterViewInit {
     }
 
     this.loading = true;
-    setTimeout(() => { // Simula la carga asíncrona de datos
+    setTimeout(() => {
       this.currentPage++;
       const startIndex = (this.currentPage - 1) * this.productsPerPage;
       const endIndex = startIndex + this.productsPerPage;
@@ -274,46 +338,17 @@ export class Catalog implements OnInit, OnDestroy, AfterViewInit {
         this.noMoreProducts = true;
       }
       this.loading = false;
-    }, 800); // Simula un tiempo de carga para los "nuevos" productos
+    }, 800);
   }
 
-
-  // --- Quick View Modal ---
   openQuickView(product: Product): void {
-    this.selectedProductForQuickView = { ...product,
-      description: 'Esta es una descripción detallada del producto que aparecería en el modal de vista rápida. Aquí puedes poner más información, especificaciones técnicas, etc. La idea es que el usuario pueda ver los detalles sin navegar a una página de producto completa.' // Descripción extendida
-    };
+    this.selectedProductForQuickView = { ...product };
     this.showQuickViewModal = true;
   }
 
   closeQuickView(): void {
     this.showQuickViewModal = false;
     this.selectedProductForQuickView = null;
-  }
-
-  // --- Métodos de Simulación de Datos ---
-  private generateDummyProducts(count: number): Product[] {
-    const categories = ['Electrónica', 'Ropa', 'Hogar', 'Deportes', 'Libros', 'Juguetes', 'Comida', 'Accesorios'];
-    const products: Product[] = [];
-    for (let i = 1; i <= count; i++) {
-      const category = categories[Math.floor(Math.random() * categories.length)];
-      products.push({
-        id: i,
-        name: `Producto de Ejemplo ${i}`,
-        description: `Esta es la descripción del producto ${i}. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.`,
-        price: parseFloat((Math.random() * 100 + 10).toFixed(2)), // Precio entre 10 y 110
-        category: category,
-        image: `https://via.placeholder.com/400x300/${this.getRandomHexColor()}/FFFFFF?text=Product+${i}`,
-        inStock: Math.random() > 0.2, // 80% de probabilidad de estar en stock
-        rating: Math.floor(Math.random() * 5) + 1, // Calificación de 1 a 5
-        reviews: Math.floor(Math.random() * 200) + 5 // Entre 5 y 205 reseñas
-      });
-    }
-    return products;
-  }
-
-  private getRandomHexColor(): string {
-    return Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
   }
 
   private populateCategories(): void {

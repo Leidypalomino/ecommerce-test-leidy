@@ -1,90 +1,159 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { HttpClient, HttpHeaders, HttpClientModule } from '@angular/common/http';
+
+interface Category {
+  id?: number;
+  name: string;
+  slug: string;
+  parent_id?: number;
+}
+
+interface ProductImage {
+  url: string;
+  alt_text: string;
+  is_primary: boolean;
+}
 
 interface Product {
-  id: number;
+  id?: number;
+  sku: string;
   name: string;
   description: string;
   price: number;
-  category: string;
-  images: string[];
-  inStock: boolean;
+  stock: number;
+  status: string;
+  featured: boolean;
+  categories: Category[];
+  images: ProductImage[];
 }
 
 @Component({
   selector: 'app-admin-products',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, HttpClientModule],
   templateUrl: './admin-products.html',
   styleUrl: './admin-products.scss'
 })
 export class AdminProducts implements OnInit {
   products: Product[] = [];
-  currentProduct!: Product; // Se inicializa en ngOnInit
+  currentProduct: Product = this.getEmptyProduct();
   isEditing: boolean = false;
-  nextId: number = 1;
-
-  availableCategories: string[] = ['Electrónica', 'Ropa', 'Hogar', 'Deportes', 'Libros', 'Juguetes'];
   tempImages: { file: File, url: string }[] = [];
+  availableCategories: Category[] = [];
+  selectedCategory?: Category;
+  message: string = '';
+  messageType: 'success' | 'error' | '' = '';
 
-  constructor() { }
+  constructor(private http: HttpClient) {}
 
   ngOnInit(): void {
-    this.currentProduct = this.getEmptyProduct(); // Inicialización segura aquí
     this.loadProducts();
+    this.loadCategories();
   }
 
-  // --- Métodos de CRUD (Simulados) ---
+  getAuthHeaders(): HttpHeaders {
+    const token = localStorage.getItem('token');
+    return new HttpHeaders({
+      'Authorization': `Bearer ${token}`,
+      'accept': 'application/json'
+    });
+  }
 
   loadProducts(): void {
-    setTimeout(() => {
-      this.products = this.generateDummyProducts(10);
-      if (this.products.length > 0) {
-        this.nextId = Math.max(...this.products.map(p => p.id)) + 1;
-      } else {
-        this.nextId = 1;
-      }
-    }, 500);
+    this.http.get<any>('http://localhost:8080/api/products')
+      .subscribe({
+        next: (response) => {
+          this.products = (response.data || []).map((p: any) => ({
+            id: p.id,
+            sku: p.sku,
+            name: p.name,
+            description: p.description,
+            price: Number(p.price),
+            stock: p.stock,
+            status: p.status,
+            featured: p.featured,
+            categories: p.categories || [],
+            images: p.images || []
+          }));
+        },
+        error: () => this.showMessage('No se pudieron cargar los productos', 'error')
+      });
+  }
+
+  loadCategories(): void {
+    this.http.get<any>('http://localhost:8080/api/categories', { headers: this.getAuthHeaders() })
+      .subscribe({
+        next: (response) => this.availableCategories = response.data,
+        error: () => this.showMessage('No se pudieron cargar las categorías', 'error')
+      });
   }
 
   saveProduct(): void {
-    if (!this.currentProduct.name || !this.currentProduct.price || !this.currentProduct.category) {
-      alert('Por favor, completa todos los campos obligatorios.');
+    if (!this.currentProduct.name || !this.currentProduct.price || !this.currentProduct.sku || !this.selectedCategory) {
+      this.showMessage('Por favor, completa todos los campos obligatorios.', 'error');
       return;
     }
 
-    const newImageUrls = this.tempImages.map(img => img.url);
+    // this.currentProduct.categories = [this.selectedCategory.id];
 
-    if (this.isEditing) {
-      const index = this.products.findIndex(p => p.id === this.currentProduct.id);
-      if (index !== -1) {
-        this.currentProduct.images = [...this.currentProduct.images, ...newImageUrls];
-        this.products[index] = { ...this.currentProduct };
-        alert('Producto actualizado con éxito!');
-      }
-    } else {
-      this.currentProduct.id = this.nextId++;
-      this.currentProduct.images = newImageUrls;
-      this.products.push({ ...this.currentProduct });
-      alert('Producto añadido con éxito!');
+    const productToSend: any = {
+      ...this.currentProduct,
+      categories: [this.selectedCategory.id], // Solo IDs para el backend
+      images: []
     }
 
-    this.resetForm();
+    if (this.isEditing && this.currentProduct.id) {
+      this.http.put<Product>(
+        `http://localhost:8080/api/products/${this.currentProduct.id}`,
+        productToSend,
+        { headers: this.getAuthHeaders() }
+      ).subscribe({
+        next: (product) => {
+          this.uploadImages(product.id!);
+          this.showMessage('Producto actualizado con éxito!', 'success');
+          this.loadProducts();
+          this.resetForm();
+        },
+        error: () => this.showMessage('No se pudo actualizar el producto', 'error')
+      });
+    } else {
+      this.http.post<Product>(
+        'http://localhost:8080/api/products',
+        productToSend,
+        { headers: this.getAuthHeaders() }
+      ).subscribe({
+        next: (product) => {
+          this.uploadImages(product.id!);
+          this.showMessage('Producto añadido con éxito!', 'success');
+          this.loadProducts();
+          this.resetForm();
+        },
+        error: () => this.showMessage('No se pudo crear el producto', 'error')
+      });
+    }
   }
 
   editProduct(product: Product): void {
     this.isEditing = true;
     this.currentProduct = { ...product };
+    this.selectedCategory = product.categories[0];
     this.tempImages = [];
   }
 
-  deleteProduct(id: number): void {
-    if (confirm('¿Estás seguro de que quieres eliminar este producto?')) {
-      this.products = this.products.filter(p => p.id !== id);
-      alert('Producto eliminado.');
-      this.resetForm();
-    }
+  deleteProduct(id?: number): void {
+    if (!id) return;
+    // Si quieres un modal de confirmación, usa tu propio modal aquí.
+    this.http.delete(`http://localhost:8080/api/products/${id}`, { headers: this.getAuthHeaders() })
+      .subscribe({
+        next: () => {
+          this.showMessage('Producto eliminado.', 'success');
+          this.loadProducts();
+          this.resetForm();
+        },
+        error: () => this.showMessage('No se pudo eliminar el producto', 'error')
+      });
   }
 
   cancelEdit(): void {
@@ -93,45 +162,23 @@ export class AdminProducts implements OnInit {
 
   resetForm(): void {
     this.currentProduct = this.getEmptyProduct();
+    this.selectedCategory = undefined;
     this.isEditing = false;
     this.tempImages = [];
   }
 
   getEmptyProduct(): Product {
     return {
-      id: 0,
+      sku: '',
       name: '',
       description: '',
       price: 0,
-      category: this.availableCategories[0] || '',
-      images: [],
-      inStock: true
+      stock: 0,
+      status: 'active',
+      featured: false,
+      categories: [],
+      images: []
     };
-  }
-
-  // --- Lógica de Drag & Drop para Imágenes ---
-
-  onDragOver(event: DragEvent): void {
-    event.preventDefault();
-    event.stopPropagation();
-    (event.currentTarget as HTMLElement).classList.add('border-blue-500', 'bg-blue-50', 'dark:bg-blue-900');
-  }
-
-  onDragLeave(event: DragEvent): void {
-    event.preventDefault();
-    event.stopPropagation();
-    (event.currentTarget as HTMLElement).classList.remove('border-blue-500', 'bg-blue-50', 'dark:bg-blue-900');
-  }
-
-  onDrop(event: DragEvent): void {
-    event.preventDefault();
-    event.stopPropagation();
-    (event.currentTarget as HTMLElement).classList.remove('border-blue-500', 'bg-blue-50', 'dark:bg-blue-900');
-
-    const files = event.dataTransfer?.files;
-    if (files) {
-      this.processFiles(files);
-    }
   }
 
   onFileSelected(event: Event): void {
@@ -164,26 +211,52 @@ export class AdminProducts implements OnInit {
     }
   }
 
-  // --- Métodos de Simulación de Datos ---
-  private generateDummyProducts(count: number): Product[] {
-    const categories = ['Electrónica', 'Ropa', 'Hogar', 'Deportes'];
-    const products: Product[] = [];
-    for (let i = 1; i <= count; i++) {
-      const category = categories[Math.floor(Math.random() * categories.length)];
-      products.push({
-        id: i,
-        name: `Producto de Test ${i}`,
-        description: `Breve descripción para el producto ${i}.`,
-        price: parseFloat((Math.random() * 100 + 10).toFixed(2)),
-        category: category,
-        images: [`https://via.placeholder.com/150x150/${this.getRandomHexColor()}/FFFFFF?text=Prod+${i}`],
-        inStock: Math.random() > 0.2,
-      });
-    }
-    return products;
+  onDragOver(event: DragEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    (event.currentTarget as HTMLElement).classList.add('border-blue-500', 'bg-blue-50', 'dark:bg-blue-900');
   }
 
-  private getRandomHexColor(): string {
-    return Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
+  onDragLeave(event: DragEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    (event.currentTarget as HTMLElement).classList.remove('border-blue-500', 'bg-blue-50', 'dark:bg-blue-900');
+  }
+
+  onDrop(event: DragEvent): void {
+    event.preventDefault();
+    event.stopPropagation();
+    (event.currentTarget as HTMLElement).classList.remove('border-blue-500', 'bg-blue-50', 'dark:bg-blue-900');
+    const files = event.dataTransfer?.files;
+    if (files) {
+      this.processFiles(files);
+    }
+  }
+
+  showMessage(msg: string, type: 'success' | 'error' = 'success') {
+    this.message = msg;
+    this.messageType = type;
+    setTimeout(() => {
+      this.message = '';
+      this.messageType = '';
+    }, 4000);
+  }
+
+  uploadImages(productId: number) {
+    if (!this.tempImages.length) return;
+    this.tempImages.forEach((img, idx) => {
+      const formData = new FormData();
+      formData.append('image', img.file);
+      formData.append('alt_text', `Imagen ${idx + 1}`);
+      formData.append('is_primary', idx === 0 ? 'true' : 'false');
+      this.http.post(
+        `http://localhost:8080/api/products/${productId}/images`,
+        formData,
+        { headers: this.getAuthHeaders() }
+      ).subscribe({
+        next: () => {},
+        error: () => this.showMessage('No se pudo subir una imagen', 'error')
+      });
+    });
   }
 }

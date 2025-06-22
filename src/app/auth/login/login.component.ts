@@ -44,7 +44,6 @@ export class LoginComponent implements OnInit {
             this.router.navigate(['/']).then(() => window.location.reload());
           },
           error: (err) => {
-            // Si el error es "Unauthorized", muestra mensaje personalizado
             if (err.error?.error === 'Unauthorized') {
               this.errorMsg = 'Usuario o contraseña incorrectos';
             } else {
