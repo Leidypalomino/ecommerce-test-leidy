@@ -3,7 +3,7 @@
     <div class="absolute inset-0 bg-black opacity-10 group-hover:opacity-0 transition-opacity duration-300 z-0"></div>
     <div class="relative z-10 flex-1 text-center md:text-left">
       <h1 class="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white mb-4 leading-tight drop-shadow-md">
-        ¡Bienvenido a <span class="text-yellow-300">Ecommerce Test!</span>
+        ¡Bienvenido a <span class="text-yellow-300">Ecommerce!</span>
       </h1>
       <p class="text-lg md:text-xl text-blue-100 dark:text-blue-200 mb-6 max-w-xl mx-auto md:mx-0">
         Descubre miles de productos increíbles, las mejores ofertas y las categorías que más te gustan, todo en un solo lugar.
@@ -16,7 +16,11 @@
         Regístrate gratis y empieza a explorar
       </a>
     </div>
-    <img src="https://images.unsplash.com/photo-1598075306917-a006c0c2a71d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w1MDk5OTl8MHwxfHNlYXJjaHw0OXx8ZWNvbW1lcmNlfGVufDB8fHx8MTcwMTkxNjExOXww&ixlib=rb-4.0.3&q=80&w=400" alt="Hero Banner Products" class="w-64 h-64 md:w-80 md:h-80 object-cover rounded-full shadow-2xl mt-8 md:mt-0 md:ml-8 transform rotate-3 group-hover:rotate-0 transition-transform duration-500">
+    <img 
+      src="https://images.unsplash.com/photo-1512436991641-6745cdb1723f?w=200&q=80" 
+      alt="Ecommerce productos" 
+      style="width: 200px; height: 200px; object-fit: cover; border-radius: 50%; box-shadow: 0 4px 16px rgba(0,0,0,0.15); display: block; margin: auto;"
+    >
   </section>
 
   <!-- Productos Destacados -->
@@ -73,7 +77,7 @@
         <a
           *ngFor="let category of mainCategories"
           [routerLink]="['/catalog']"
-          [queryParams]="{ category: category.name }"
+          [queryParams]="{ category: category.id }"
           class="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-5 flex flex-col items-center text-center hover:shadow-xl transform hover:-translate-y-2 transition-all duration-300 cursor-pointer"
         >
           <img [src]="category.image" [alt]="category.name" class="w-24 h-24 object-cover rounded-full mb-3 border-4 border-blue-400 dark:border-blue-600 shadow-md">

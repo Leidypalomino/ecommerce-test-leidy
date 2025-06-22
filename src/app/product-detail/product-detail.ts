@@ -14,6 +14,7 @@ interface Product {
   price: number;
   oldPrice?: number; // Precio anterior para ofertas
   category: string;
+  categoryId?: number;
   images: string[]; // Array de URLs de imágenes
   inStock: boolean;
   rating: number;
@@ -64,7 +65,10 @@ export class ProductDetail implements OnInit, OnDestroy {
     if (stateProduct) {
       this.product = stateProduct;
       this.mainImage = stateProduct.images[0] || '';
-      this.loadRelatedProducts(stateProduct.category, stateProduct.id);
+      const categoryId = stateProduct.categoryId;
+      if (categoryId && this.product) {
+        this.loadRelatedProducts(categoryId, this.product.id);
+      }
       this.setMetaTags(stateProduct);
       this.loading = false;
     } else {
@@ -89,48 +93,78 @@ export class ProductDetail implements OnInit, OnDestroy {
   }
 
   private loadProduct(id: number): void {
-  this.loading = true;
-  this.product = undefined;
-  this.mainImage = '';
+    this.loading = true;
+    this.product = undefined;
+    this.mainImage = '';
 
-  this.http.get<any>(`http://localhost:8080/api/products/${id}?include=categories,images`).subscribe({
-    next: (p) => {
-      if (p) {
-        this.product = {
-          id: p.id,
-          name: p.name,
-          description: p.description,
-          longDescription: p.long_description || '',
-          price: Number(p.price),
-          oldPrice: p.old_price ? Number(p.old_price) : undefined,
-          category: p.categories && p.categories.length > 0 ? p.categories[0].name : 'Sin categoría',
-          images: p.images && p.images.length > 0
-            ? p.images.map((img: any) => 'http://localhost:8080' + img.url)
-            : ['https://via.placeholder.com/600x400?text=Sin+Imagen'],
-          inStock: p.stock > 0,
-          rating: Math.floor(Math.random() * 5) + 1, // Si tu API lo trae, úsalo
-          reviews: Math.floor(Math.random() * 200) + 10, // Si tu API lo trae, úsalo
-          sku: p.sku || '',
-          brand: p.brand || ''
-        };
-        this.mainImage = this.product.images[0] || '';
-        this.setMetaTags(this.product);
-        // Puedes cargar productos relacionados aquí si tu API lo permite
+    this.http.get<any>(`http://localhost:8080/api/products/${id}?include=categories,images`).subscribe({
+      next: (p) => {
+        if (p) {
+          this.product = {
+            id: p.id,
+            name: p.name,
+            description: p.description,
+            longDescription: p.long_description || '',
+            price: Number(p.price),
+            oldPrice: p.old_price ? Number(p.old_price) : undefined,
+            category: p.categories && p.categories.length > 0 ? p.categories[0].name : 'Sin categoría',
+  categoryId: p.categories && p.categories.length > 0 ? p.categories[0].id : null,
+            images: p.images && p.images.length > 0
+              ? p.images.map((img: any) => 'http://localhost:8080' + img.url)
+              : ['https://via.placeholder.com/600x400?text=Sin+Imagen'],
+            inStock: p.stock > 0,
+            rating: Math.floor(Math.random() * 5) + 1,
+            reviews: Math.floor(Math.random() * 200) + 10,
+            sku: p.sku || '',
+            brand: p.brand || ''
+          };
+          this.mainImage = this.product.images[0] || '';
+          this.setMetaTags(this.product);
+          // Llama aquí usando el id de la categoría principal
+          const categoryId = p.categories && p.categories.length > 0 ? p.categories[0].id : null;
+          if (categoryId) {
+            this.loadRelatedProducts(categoryId, this.product.id);
+          }
+        }
+        this.loading = false;
+      },
+      error: () => {
+        this.product = undefined;
+        this.loading = false;
       }
-      this.loading = false;
-    },
-    error: () => {
-      this.product = undefined;
-      this.loading = false;
-    }
     });
   }
 
-  private loadRelatedProducts(category: string, currentProductId: number): void {
-    this.relatedProducts = this.productsData
-      .filter(p => p.category === category && p.id !== currentProductId) // Filtra por categoría y excluye el actual
-      .sort(() => 0.5 - Math.random()) // Orden aleatorio
-      .slice(0, 4); // Toma 4 productos relacionados
+  private loadRelatedProducts(categoryId: number, currentProductId: number): void {
+    this.relatedProducts = [];
+    this.http.get<any>(`http://localhost:8080/api/products?category=${categoryId}&include=categories,images`).subscribe({
+      next: (response) => {
+        this.relatedProducts = (response.data || [])
+          .filter((p: any) => p.id !== currentProductId)
+          .map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            description: p.description,
+            longDescription: p.long_description || '',
+            price: Number(p.price),
+            oldPrice: p.old_price ? Number(p.old_price) : undefined,
+            category: p.categories && p.categories.length > 0 ? p.categories[0].name : 'Sin categoría',
+            images: p.images && p.images.length > 0
+              ? p.images.map((img: any) => 'http://localhost:8080' + img.url)
+              : ['https://via.placeholder.com/600x400?text=Sin+Imagen'],
+            inStock: p.stock > 0,
+            rating: Math.floor(Math.random() * 5) + 1,
+            reviews: Math.floor(Math.random() * 200) + 10,
+            sku: p.sku || '',
+            brand: p.brand || ''
+          }))
+          .sort(() => 0.5 - Math.random()) // Aleatorio
+          .slice(0, 3); // Solo 3 productos
+      },
+      error: () => {
+        this.relatedProducts = [];
+      }
+    });
   }
 
   private setMetaTags(product: Product): void {

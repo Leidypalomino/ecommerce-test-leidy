@@ -4,6 +4,16 @@ import { CommonModule } from '@angular/common';
 import { RouterModule } from '@angular/router';
 import { HttpClient, HttpClientModule } from '@angular/common/http';
 
+interface Product {
+  id: number;
+  name: string;
+  price: number;
+  category: string;
+  image: string;
+  discount?: number;
+  isNew?: boolean;
+}
+
 @Component({
   selector: 'app-home',
   standalone: true,
@@ -15,28 +25,13 @@ export class Home implements OnInit {
   loading = true;
   loadingCategories = true;
 
-  featuredProducts: {
-    id: number;
-    name: string;
-    price: number;
-    category: string;
-    image: string;
-    discount: number;
-  }[] = [];
+  featuredProducts: Product[] = [];
+  mostViewedProducts: Product[] = [];
 
   mainCategories: {
     id: number;
     name: string;
     image: string;
-  }[] = [];
-
-  mostViewedProducts: {
-    id: number;
-    name: string;
-    price: number;
-    category: string;
-    image: string;
-    isNew: boolean;
   }[] = [];
 
   constructor(private http: HttpClient) {}
@@ -60,22 +55,69 @@ export class Home implements OnInit {
       }
     });
 
-    setTimeout(() => {
-      this.featuredProducts = [
-        { id: 1, name: 'Audífonos Bluetooth Pro', price: 49.99, category: 'Audio', image: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=300&q=80', discount: 10 },
-        { id: 2, name: 'Smartwatch Serie 7', price: 89.99, category: 'Electrónica', image: 'https://images.unsplash.com/photo-1519125323398-675f0ddb6308?auto=format&fit=crop&w=300&q=80', discount: 0 },
-        { id: 3, name: 'Cámara Digital 4K', price: 120.00, category: 'Fotografía', image: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=300&q=80', discount: 5 },
-        { id: 4, name: 'Teclado Mecánico RGB', price: 69.99, category: 'Gaming', image: 'https://images.unsplash.com/photo-1519985176271-adb1088fa94c?auto=format&fit=crop&w=300&q=80', discount: 15 }
-      ];
+    this.http.get<any>('http://localhost:8080/api/products?featured=true&include=categories,images').subscribe({
+      next: (response) => {
+        this.featuredProducts = (response.data || []).map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          price: Number(p.price),
+          category: p.categories && p.categories.length > 0 ? p.categories[0].name : 'Sin categoría',
+          image: p.images && p.images.length > 0
+            ? ('http://localhost:8080' + (p.images.find((img: any) => img.is_primary)?.url || p.images[0].url))
+            : 'https://via.placeholder.com/400x300?text=Sin+Imagen',
+          discount: Math.random() > 0.7 ? Math.floor(Math.random() * 30) + 5 : 0 // Simula descuentos si quieres
+        }));
+      },
+      error: () => {
+        this.featuredProducts = [];
+      }
+    });
 
-      this.mostViewedProducts = [
-        { id: 5, name: 'Laptop Gamer Ultrabook', price: 999.99, category: 'Computadoras', image: 'https://images.unsplash.com/photo-1517336714731-489689fd1ca8?auto=format&fit=crop&w=300&q=80', isNew: true },
-        { id: 6, name: 'Zapatillas Running Pro', price: 59.99, category: 'Calzado', image: 'https://images.unsplash.com/photo-1519125323398-675f0ddb6308?auto=format&fit=crop&w=300&q=80', isNew: false },
-        { id: 7, name: 'Silla Ergonómica Premium', price: 150.00, category: 'Muebles', image: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=300&q=80', isNew: true },
-        { id: 8, name: 'Smart TV 65 pulgadas', price: 399.99, category: 'Electrónica', image: 'https://images.unsplash.com/photo-1519985176271-adb1088fa94c?auto=format&fit=crop&w=300&q=80', isNew: false }
-      ];
-      this.loading = false; // <-- Oculta los skeletons y muestra los datos reales
-    }, 1500);
+    setTimeout(() => {
+      // Productos destacados (solo 4)
+      this.http.get<any>('http://localhost:8080/api/products?featured=true&include=categories,images').subscribe({
+        next: (response) => {
+          this.featuredProducts = (response.data || [])
+            .sort(() => 0.5 - Math.random()) // Mezcla aleatoriamente si hay más de 4
+            .slice(0, 4) // Solo 4 productos
+            .map((p: any) => ({
+              id: p.id,
+              name: p.name,
+              price: Number(p.price),
+              category: p.categories && p.categories.length > 0 ? p.categories[0].name : 'Sin categoría',
+              image: p.images && p.images.length > 0
+                ? ('http://localhost:8080' + (p.images.find((img: any) => img.is_primary)?.url || p.images[0].url))
+                : 'https://via.placeholder.com/400x300?text=Sin+Imagen',
+              discount: Math.random() > 0.7 ? Math.floor(Math.random() * 30) + 5 : 0
+            }));
+        },
+        error: () => {
+          this.featuredProducts = [];
+        }
+      });
+
+      // Lo más visto (simulado: 4 aleatorios)
+      this.http.get<any>('http://localhost:8080/api/products?include=categories,images').subscribe({
+        next: (response) => {
+          const all = (response.data || []).map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            price: Number(p.price),
+            category: p.categories && p.categories.length > 0 ? p.categories[0].name : 'Sin categoría',
+            image: p.images && p.images.length > 0
+              ? ('http://localhost:8080' + (p.images.find((img: any) => img.is_primary)?.url || p.images[0].url))
+              : 'https://via.placeholder.com/400x300?text=Sin+Imagen',
+            isNew: Math.random() > 0.5
+          }));
+          this.mostViewedProducts = all.sort(() => 0.5 - Math.random()).slice(0, 4);
+          this.loading = false;
+        },
+        error: () => {
+          this.mostViewedProducts = [];
+          this.loading = false;
+        }
+      });
+    }, 1200);
   }
 
   getCategoryImage(slug: string): string {

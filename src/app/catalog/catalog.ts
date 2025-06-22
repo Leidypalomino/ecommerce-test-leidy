@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { debounceTime, Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
-import { RouterModule } from '@angular/router';
+import { RouterModule, ActivatedRoute } from '@angular/router';
 import { HttpClient, HttpClientModule } from '@angular/common/http';
 
 interface Product {
@@ -64,17 +64,25 @@ export class Catalog implements OnInit, OnDestroy, AfterViewInit {
   showQuickViewModal: boolean = false;
   selectedProductForQuickView: Product | null = null;
 
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient, private route: ActivatedRoute) {}
 
   ngOnInit(): void {
+    this.route.queryParams.subscribe(params => {
+      const categoryId = params['category'];
+      if (categoryId) {
+        this.loadProductsByCategory(categoryId);
+      } else {
+        this.loadProductsFromApi();
+      }
+    });
+
     this.searchSubject.pipe(
       debounceTime(400),
       takeUntil(this.destroy$)
     ).subscribe((term) => {
       this.searchProductsFromApi(term);
     });
-
-    this.loadProductsFromApi();
+    // this.loadProductsFromApi();
   }
 
   searchProductsFromApi(term: string): void {
